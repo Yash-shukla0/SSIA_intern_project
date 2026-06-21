@@ -1,2 +1,1 @@
-# SSIA_intern_project
-
+Insurance Fraud Detection Project
