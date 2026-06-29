@@ -1,3 +1,7 @@
+from agents.validation_agent import validate
+from agents.fraud_agent import predict
+from agents.risk_agent import calculate
+from agents.decision_agent import decide
 
 import streamlit as st
 
@@ -110,139 +114,148 @@ st.markdown("---")
 
 if st.button("🔍 Detect Fraud", use_container_width=True):
 
-    risk_score = 0
-    reasons = []
+    # ============================
+    # Collect User Data
+    # ============================
 
-    ratio = total_claim_amount / (policy_annual_premium + 1)
+    user_data = {
+        "age": age,
+        "policy_annual_premium": policy_annual_premium,
+        "total_claim_amount": total_claim_amount,
+        "injury_claim": injury_claim,
+        "property_claim": property_claim,
+        "vehicle_claim": vehicle_claim,
+        "incident_severity": incident_severity,
+        "police_report_available": police_report,
+        "witnesses": witnesses,
+        "number_of_vehicles_involved": vehicles,
+        "bodily_injuries": bodily_injuries
+    }
 
-    # Claim vs Premium
+    # ============================
+    # Agent 1 : Validation Agent
+    # ============================
 
-    if ratio > 30:
-        risk_score += 25
-        reasons.append(
-            "Very high claim-to-premium ratio"
-        )
+    errors = validate(user_data)
 
-    elif ratio > 15:
-        risk_score += 15
-        reasons.append(
-            "High claim-to-premium ratio"
-        )
+    if errors:
 
-    # High claim amount
+        st.error("Input Validation Failed")
 
-    if total_claim_amount > 50000:
-        risk_score += 20
-        reasons.append(
-            "Unusually high claim amount"
-        )
+        for e in errors:
+            st.write("•", e)
 
-    # Police report
+        st.stop()
 
-    if police_report == "NO":
-        risk_score += 15
-        reasons.append(
-            "Police report not available"
-        )
+    # ============================
+    # Features for DNN
+    # ============================
 
-    # Severity
+        # ============================
+    # Encode Categorical Inputs
+    # ============================
 
-    if incident_severity == "Total Loss":
-        risk_score += 15
-        reasons.append(
-            "Total vehicle loss reported"
-        )
+    severity_map = {
+        "Trivial Damage": 0,
+        "Minor Damage": 1,
+        "Major Damage": 2,
+        "Total Loss": 3
+    }
 
-    elif incident_severity == "Major Damage":
-        risk_score += 10
-        reasons.append(
-            "Major damage reported"
-        )
+    police_map = {
+        "YES": 1,
+        "NO": 0
+    }
 
-    # Witnesses
+    # ============================
+    # Features for DNN
+    # ============================
 
-    if witnesses == 0:
-        risk_score += 10
-        reasons.append(
-            "No witnesses available"
-        )
+    features = [
 
-    # Vehicles involved
+        age,
 
-    if vehicles >= 3:
-        risk_score += 10
-        reasons.append(
-            "Multiple vehicles involved"
-        )
+        policy_annual_premium,
 
-    # Bodily injuries
+        total_claim_amount,
 
-    if bodily_injuries > 2:
-        risk_score += 5
-        reasons.append(
-            "High bodily injury count"
-        )
+        injury_claim,
 
-    # Young customer
+        property_claim,
 
-    if age < 25:
-        risk_score += 5
-        reasons.append(
-            "Young policy holder"
-        )
+        vehicle_claim,
 
-    risk_score = min(risk_score, 100)
+        severity_map[incident_severity],
 
-    fraud_probability = risk_score
+        police_map[police_report],
 
-    confidence = 100 - abs(
-        50 - risk_score
+        witnesses,
+
+        vehicles,
+
+        bodily_injuries
+
+    ]
+
+    # ============================
+    # Agent 2 : Fraud Agent
+    # ============================
+
+    fraud_probability, anomaly_score = predict(features)
+
+    # ============================
+    # Agent 3 : Risk Agent
+    # ============================
+
+    risk_score, reasons = calculate(
+        user_data,
+        fraud_probability,
+        anomaly_score
     )
 
-    # =====================================
-    # DECISION
-    # =====================================
+    # ============================
+    # Agent 4 : Decision Agent
+    # ============================
 
-    if risk_score >= 70:
+    decision, recommendation = decide(risk_score)
 
-        decision = "🔴 HIGH FRAUD RISK"
-
-    elif risk_score >= 40:
-
-        decision = "🟡 MANUAL INVESTIGATION REQUIRED"
-
-    else:
-
-        decision = "🟢 LOW FRAUD RISK"
-
-    # =====================================
-    # RESULTS
-    # =====================================
+    # ============================
+    # Results
+    # ============================
 
     st.markdown("---")
 
     c1, c2, c3 = st.columns(3)
 
     c1.metric(
-        "Fraud Probability",
-        f"{fraud_probability:.0f}%"
-    )
-
+    "Fraud Probability",
+    f"{fraud_probability*100:.1f}%"
+)
     c2.metric(
-        "Risk Score",
-        f"{risk_score:.0f}/100"
-    )
+    "Risk Score",
+    f"{risk_score:.0f}/100"
+)
 
     c3.metric(
-        "Claim/Premium Ratio",
-        f"{ratio:.2f}"
-    )
+    "Anomaly Score",
+    f"{anomaly_score:.3f}"
+)
 
-    st.progress(risk_score)
+    st.progress(int(risk_score))
 
-    st.subheader("Decision")
+    st.markdown("### 🤖 Agent Execution Status")
 
-    if risk_score >= 70:
+    st.success("✅ Validation Agent Completed")
+
+    st.success("✅ Fraud Detection Agent Completed")
+
+    st.success("✅ Risk Assessment Agent Completed")
+
+    st.success("✅ Decision Agent Completed")
+
+    st.progress(int(risk_score))
+
+    if risk_score >= 75:
         st.error(decision)
 
     elif risk_score >= 40:
@@ -253,34 +266,15 @@ if st.button("🔍 Detect Fraud", use_container_width=True):
 
     st.subheader("Risk Factors")
 
-    if len(reasons) == 0:
+    if reasons:
 
-        st.success(
-            "No suspicious indicators detected."
-        )
+        for r in reasons:
+            st.write("•", r)
 
     else:
 
-        for reason in reasons:
-
-            st.write(f"• {reason}")
+        st.success("No suspicious indicators detected.")
 
     st.subheader("AI Recommendation")
 
-    if risk_score >= 70:
-
-        st.error(
-            "Recommend detailed fraud investigation before claim approval."
-        )
-
-    elif risk_score >= 40:
-
-        st.warning(
-            "Recommend manual review by insurance officer."
-        )
-
-    else:
-
-        st.success(
-            "Claim appears genuine and may proceed normally."
-        )
+    st.info(recommendation)
